@@ -111,7 +111,7 @@ func (a *jaasAccessServiceAccountResource) Metadata(_ context.Context, req resou
 
 // Schema defines the schema for the JAAS serviceAccount access resource.
 func (a *jaasAccessServiceAccountResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	attributes := a.partialAccessSchema()
+	attributes := a.baseAccessSchema()
 	attributes["service_account_id"] = schema.StringAttribute{
 		Description: "The ID of the service account for access management. If this is changed the resource will be deleted and a new resource will be created.",
 		Required:    true,

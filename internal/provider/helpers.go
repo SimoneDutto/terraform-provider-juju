@@ -42,6 +42,7 @@ const (
 	LogResourceJAASAccessController = "resource-jaas-access-controller"
 	LogResourceJAASAccessSvcAcc     = "resource-jaas-access-service-account"
 	LogResourceJAASGroup            = "resource-jaas-group"
+	LogResourceJAASRole             = "resource-jaas-role"
 )
 
 const LogResourceIntegration = "resource-integration"

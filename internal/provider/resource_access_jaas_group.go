@@ -103,7 +103,7 @@ func (a *jaasAccessGroupResource) Metadata(_ context.Context, req resource.Metad
 
 // Schema defines the schema for the JAAS group access resource.
 func (a *jaasAccessGroupResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	attributes := a.partialAccessSchema()
+	attributes := a.baseAccessSchema()
 	attributes["group_id"] = schema.StringAttribute{
 		Description: "The ID of the group for access management. If this is changed the resource will be deleted and a new resource will be created.",
 		Required:    true,

@@ -102,7 +102,7 @@ func (a *jaasAccessCloudResource) Metadata(_ context.Context, req resource.Metad
 
 // Schema defines the schema for the JAAS cloud access resource.
 func (a *jaasAccessCloudResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	attributes := a.partialAccessSchema()
+	attributes := a.baseAccessSchema()
 	attributes["cloud_name"] = schema.StringAttribute{
 		Description: "The name of the cloud for access management. If this is changed the resource will be deleted and a new resource will be created.",
 		Required:    true,

@@ -99,7 +99,7 @@ func (a *jaasAccessOfferResource) Metadata(_ context.Context, req resource.Metad
 
 // Schema defines the schema for the JAAS offer access resource.
 func (a *jaasAccessOfferResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	attributes := a.partialAccessSchema()
+	attributes := a.baseAccessSchema()
 	attributes["offer_url"] = schema.StringAttribute{
 		Description: "The url of the offer for access management. If this is changed the resource will be deleted and a new resource will be created.",
 		Required:    true,

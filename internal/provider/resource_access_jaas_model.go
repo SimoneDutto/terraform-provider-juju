@@ -97,7 +97,7 @@ func (a *jaasAccessModelResource) Metadata(_ context.Context, req resource.Metad
 
 // Schema defines the schema for the JAAS model access resource.
 func (a *jaasAccessModelResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	attributes := a.partialAccessSchema()
+	attributes := a.baseAccessSchema()
 	attributes["model_uuid"] = schema.StringAttribute{
 		Description: "The uuid of the model for access management. If this is changed the resource will be deleted and a new resource will be created.",
 		Required:    true,
