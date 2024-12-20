@@ -310,6 +310,7 @@ type UpdateApplicationInput struct {
 	Unexpose []string
 	Config   map[string]string
 	//Series    string // Unsupported today
+	Base               string
 	Placement          map[string]interface{}
 	Constraints        *constraints.Value
 	EndpointBindings   map[string]string
@@ -1194,7 +1195,7 @@ func (c applicationsClient) UpdateApplication(input *UpdateApplicationInput) err
 	// before the operations with config. Because the config params
 	// can be changed from one revision to another. So "Revision-Config"
 	// ordering will help to prevent issues with the configuration parsing.
-	if input.Revision != nil || input.Channel != "" || len(input.Resources) != 0 {
+	if input.Revision != nil || input.Channel != "" || len(input.Resources) != 0 || input.Base != "" {
 		setCharmConfig, err := c.computeSetCharmConfig(input, applicationAPIClient, charmsAPIClient, resourcesAPIClient)
 		if err != nil {
 			return err
@@ -1378,6 +1379,12 @@ func (c applicationsClient) computeSetCharmConfig(
 		if parsedChannel.Branch != "" {
 			newOrigin.Branch = strPtr(parsedChannel.Branch)
 		}
+	} else if input.Base != "" {
+		base, err := corebase.ParseBaseFromString(input.Base)
+		if err != nil {
+			return nil, err
+		}
+		newOrigin.Base = base
 	}
 
 	resolvedURL, resolvedOrigin, supportedBases, err := resolveCharm(charmsAPIClient, newURL, newOrigin)
@@ -1405,6 +1412,8 @@ func (c applicationsClient) computeSetCharmConfig(
 		oldOrigin.Track = newOrigin.Track
 		oldOrigin.Risk = newOrigin.Risk
 		oldOrigin.Branch = newOrigin.Branch
+	} else if input.Base != "" {
+		oldOrigin.Base = newOrigin.Base
 	}
 
 	resultOrigin, err := charmsAPIClient.AddCharm(resolvedURL, oldOrigin, false)

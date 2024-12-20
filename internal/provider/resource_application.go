@@ -29,6 +29,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/juju/errors"
 	"github.com/juju/juju/core/constraints"
+	"github.com/juju/juju/core/model"
 	jujustorage "github.com/juju/juju/storage"
 
 	"github.com/juju/terraform-provider-juju/internal/juju"
@@ -62,7 +63,7 @@ var _ resource.Resource = &applicationResource{}
 var _ resource.ResourceWithConfigure = &applicationResource{}
 var _ resource.ResourceWithImportState = &applicationResource{}
 
-func NewApplicationResource() resource.Resource {
+func NewApplicationResource() resource.ResourceWithConfigure {
 	return &applicationResource{}
 }
 
@@ -82,6 +83,7 @@ type applicationResourceModel struct {
 	Constraints       types.String `tfsdk:"constraints"`
 	Expose            types.List   `tfsdk:"expose"`
 	ModelName         types.String `tfsdk:"model"`
+	ModelType         types.String `tfsdk:"model_type"`
 	Placement         types.String `tfsdk:"placement"`
 	EndpointBindings  types.Set    `tfsdk:"endpoint_bindings"`
 	Resources         types.Map    `tfsdk:"resources"`
@@ -124,7 +126,7 @@ func (r *applicationResource) Configure(ctx context.Context, req resource.Config
 	r.subCtx = tflog.NewSubsystem(ctx, LogResourceApplication)
 }
 
-func (r *applicationResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *applicationResource) Schema(ctx context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Description: "A resource that represents a single Juju application deployment from a charm. Deployment of bundles" +
 			" is not supported.",
@@ -145,6 +147,14 @@ func (r *applicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Required: true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplaceIfConfigured(),
+				},
+			},
+			"model_type": schema.StringAttribute{
+				Description: "",
+				Computed:    true,
+				Optional:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"units": schema.Int64Attribute{
@@ -321,6 +331,18 @@ func (r *applicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 							Computed:    true,
 							PlanModifiers: []planmodifier.String{
 								stringplanmodifier.UseStateForUnknown(),
+								stringplanmodifier.RequiresReplaceIf(func(ctx context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
+									if req.State.Raw.IsKnown() {
+										var state applicationResourceModel
+										diags := req.State.Get(ctx, &state)
+										if diags.HasError() {
+											resp.Diagnostics.Append(diags...)
+											return
+										}
+										modelType := state.ModelType.ValueString()
+										resp.RequiresReplace = modelType == model.IAAS.String()
+									}
+								}, "replace if it's a machine charm", "replace if it's a machine charm"),
 							},
 							Validators: []validator.String{
 								stringvalidator.ConflictsWith(path.Expressions{
@@ -582,6 +604,11 @@ func (r *applicationResource) Create(ctx context.Context, req resource.CreateReq
 	}
 	r.trace(fmt.Sprintf("read application resource %q", createResp.AppName))
 
+	modelType, err := r.client.Applications.ModelType(modelName)
+	if err != nil {
+		resp.Diagnostics.Append(handleApplicationNotFoundError(ctx, err, &resp.State)...)
+		return
+	}
 	// Save plan into Terraform state
 
 	// Constraints do not apply to subordinate applications. If the application
@@ -590,6 +617,7 @@ func (r *applicationResource) Create(ctx context.Context, req resource.CreateReq
 	plan.Placement = types.StringValue(readResp.Placement)
 	plan.Principal = types.BoolNull()
 	plan.ApplicationName = types.StringValue(createResp.AppName)
+	plan.ModelType = types.StringValue(modelType.String())
 	planCharm.Revision = types.Int64Value(int64(readResp.Revision))
 	planCharm.Base = types.StringValue(readResp.Base)
 	planCharm.Series = types.StringValue(readResp.Series)
@@ -692,6 +720,12 @@ func (r *applicationResource) Read(ctx context.Context, req resource.ReadRequest
 	}
 	r.trace("read application", map[string]interface{}{"resource": appName, "response": response})
 
+	modelType, err := r.client.Applications.ModelType(modelName)
+	if err != nil {
+		resp.Diagnostics.Append(handleApplicationNotFoundError(ctx, err, &resp.State)...)
+		return
+	}
+
 	state.ApplicationName = types.StringValue(appName)
 	state.ModelName = types.StringValue(modelName)
 
@@ -700,6 +734,7 @@ func (r *applicationResource) Read(ctx context.Context, req resource.ReadRequest
 	state.Placement = types.StringValue(response.Placement)
 	state.Principal = types.BoolNull()
 	state.UnitCount = types.Int64Value(int64(response.Units))
+	state.ModelType = types.StringValue(modelType.String())
 	state.Trust = types.BoolValue(response.Trust)
 
 	// state requiring transformation
@@ -879,6 +914,7 @@ func (r *applicationResource) Update(ctx context.Context, req resource.UpdateReq
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -920,16 +956,19 @@ func (r *applicationResource) Update(ctx context.Context, req resource.UpdateReq
 			updateApplicationInput.Revision = intPtr(planCharm.Revision)
 		}
 
-		if !planCharm.Series.Equal(stateCharm.Series) || !planCharm.Base.Equal(stateCharm.Base) {
-			// This violates Terraform's declarative model. We could implement
-			// `juju set-application-base`, usually used after `upgrade-machine`,
-			// which would change the operating system used for future units of
-			// the application provided the charm supported it, but not change
-			// the current. This provider does not implement an equivalent to
-			// `upgrade-machine`. There is also a question of how to handle a
-			// change to series, revision and channel at the same time.
-			resp.Diagnostics.AddWarning("Not Supported", "Changing an application's operating system after deploy.")
+		if !planCharm.Base.Equal(stateCharm.Base) {
+			updateApplicationInput.Base = planCharm.Base.ValueString()
 		}
+		// if !planCharm.Series.Equal(stateCharm.Series) || !planCharm.Base.Equal(stateCharm.Base) {
+		// 	// This violates Terraform's declarative model. We could implement
+		// 	// `juju set-application-base`, usually used after `upgrade-machine`,
+		// 	// which would change the operating system used for future units of
+		// 	// the application provided the charm supported it, but not change
+		// 	// the current. This provider does not implement an equivalent to
+		// 	// `upgrade-machine`. There is also a question of how to handle a
+		// 	// change to series, revision and channel at the same time.
+		// 	resp.Diagnostics.AddWarning("Not Supported", "Changing an application's operating system after deploy.")
+		// }
 	}
 
 	if !plan.Expose.Equal(state.Expose) {
@@ -1051,7 +1090,8 @@ func (r *applicationResource) Update(ctx context.Context, req resource.UpdateReq
 	if updateApplicationInput.Channel != "" ||
 		updateApplicationInput.Revision != nil ||
 		updateApplicationInput.Placement != nil ||
-		updateApplicationInput.Units != nil {
+		updateApplicationInput.Units != nil ||
+		updateApplicationInput.Base != "" {
 		readResp, err := r.client.Applications.ReadApplicationWithRetryOnNotFound(ctx, &juju.ReadApplicationInput{
 			ModelName: updateApplicationInput.ModelName,
 			AppName:   updateApplicationInput.AppName,
@@ -1090,6 +1130,7 @@ func (r *applicationResource) Update(ctx context.Context, req resource.UpdateReq
 		}
 	}
 
+	plan.ModelType = state.ModelType
 	plan.ID = types.StringValue(newAppID(plan.ModelName.ValueString(), plan.ApplicationName.ValueString()))
 	plan.Principal = types.BoolNull()
 	r.trace("Updated", applicationResourceModelForLogging(ctx, &plan))
