@@ -28,6 +28,7 @@ import (
 	"github.com/juju/utils/v3"
 
 	"github.com/juju/terraform-provider-juju/internal/juju"
+	"github.com/juju/terraform-provider-juju/internal/provider/subresources"
 )
 
 var _ resource.Resource = &modelResource{}
@@ -39,7 +40,8 @@ func NewModelResource() resource.Resource {
 }
 
 type modelResource struct {
-	client *juju.Client
+	client                 *juju.Client
+	annotationsSubresource *Annotations
 
 	// context for the logging subsystem.
 	subCtx context.Context
@@ -174,6 +176,7 @@ func (r *modelResource) Configure(ctx context.Context, req resource.ConfigureReq
 		return
 	}
 	r.client = client
+	r.annotationsSubresource = subresources.NewAnnotationsSubresource(client)
 	r.subCtx = tflog.NewSubsystem(ctx, LogResourceModel)
 }
 
@@ -263,23 +266,10 @@ func (r *modelResource) Create(ctx context.Context, req resource.CreateRequest, 
 		plan.Cloud = newPlanCloud
 	}
 
-	var annotations map[string]string
-	resp.Diagnostics.Append(plan.Annotations.ElementsAs(ctx, &annotations, false)...)
+	resp.Diagnostics.Append(r.annotationsSubresource.Create(ctx, plan.Annotations, plan.Name.ValueString(), response.UUID)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if len(annotations) > 0 {
-		err = r.client.Annotations.SetAnnotations(&juju.SetAnnotationsInput{
-			ModelName:   modelName,
-			Annotations: annotations,
-			EntityTag:   names.NewModelTag(response.UUID),
-		})
-		if err != nil {
-			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to set annotations for model %q, got error: %s", plan.Name, err))
-			return
-		}
-	}
-
 	plan.Credential = types.StringValue(response.CloudCredentialName)
 	plan.Type = types.StringValue(response.Type)
 	plan.UUID = types.StringValue(response.UUID)
