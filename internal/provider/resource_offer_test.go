@@ -73,7 +73,7 @@ resource "juju_application" "appone" {
 resource "juju_offer" "offerone" {
 	model            = juju_model.modelone.name
 	application_name = juju_application.appone.name
-	endpoint         = "sink"
+	endpoints         = ["sink"]
 }
 
 resource "juju_model" "modeldest" {
@@ -158,7 +158,7 @@ resource "juju_application" "this" {
 resource "juju_offer" "this" {
 	model            = juju_model.this.name
 	application_name = juju_application.this.name
-	endpoint         = "db"
+	endpoints         = ["db", "db-admin"]
 }
 `, modelName, os)
 }

@@ -8,12 +8,17 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -42,6 +47,7 @@ type offerResourceModel struct {
 	OfferName       types.String `tfsdk:"name"`
 	ApplicationName types.String `tfsdk:"application_name"`
 	EndpointName    types.String `tfsdk:"endpoint"`
+	Endpoints       types.Set    `tfsdk:"endpoints"`
 	URL             types.String `tfsdk:"url"`
 	// ID required by the testing framework
 	ID types.String `tfsdk:"id"`
@@ -85,10 +91,30 @@ func (o *offerResource) Schema(_ context.Context, req resource.SchemaRequest, re
 			"endpoint": schema.StringAttribute{
 				Description: "The endpoint name. Changing this value will cause the offer" +
 					" to be destroyed and recreated by terraform.",
-				Required: true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(
+						path.MatchRoot("endpoints"),
+					),
+				},
+				Optional:           true,
+				DeprecationMessage: "Use the 'endpoints' attribute instead. This attribute will be removed in the next major version of the provider.",
+			},
+			"endpoints": schema.SetAttribute{
+				ElementType: types.StringType,
+				Description: "The endpoint names. Changing this value will cause the offer" +
+					" to be destroyed and recreated by terraform.",
+				PlanModifiers: []planmodifier.Set{
+					setplanmodifier.RequiresReplace(),
+				},
+				Validators: []validator.Set{
+					setvalidator.ConflictsWith(
+						path.MatchRoot("endpoint"),
+					),
+				},
+				Optional: true,
 			},
 			"url": schema.StringAttribute{
 				Description: "The offer URL.",
@@ -101,6 +127,15 @@ func (o *offerResource) Schema(_ context.Context, req resource.SchemaRequest, re
 				},
 			},
 		},
+	}
+}
+
+func (o *offerResource) ConfigValidators(_ context.Context) []resource.ConfigValidator {
+	return []resource.ConfigValidator{
+		resourcevalidator.ExactlyOneOf(
+			path.MatchRoot("endpoint"),
+			path.MatchRoot("endpoints"),
+		),
 	}
 }
 
@@ -137,12 +172,25 @@ func (o *offerResource) Create(ctx context.Context, req resource.CreateRequest, 
 		offerName = plan.ApplicationName.ValueString()
 	}
 
+	var endpoints []string
+	if !plan.EndpointName.IsNull() {
+		// If the endpoint is set, use it as the only endpoint.
+		endpoints = []string{plan.EndpointName.ValueString()}
+	} else if !plan.Endpoints.IsNull() {
+		// If the endpoints are set, use them
+		diag := plan.Endpoints.ElementsAs(ctx, &endpoints, false)
+		if diag.HasError() {
+			resp.Diagnostics.Append(diag...)
+			return
+		}
+	}
+
 	response, errs := o.client.Offers.CreateOffer(&juju.CreateOfferInput{
 		ModelName:       modelName,
 		ModelOwner:      modelOwner,
 		Name:            offerName,
 		ApplicationName: plan.ApplicationName.ValueString(),
-		Endpoint:        plan.EndpointName.ValueString(),
+		Endpoints:       endpoints,
 		OfferOwner:      o.client.Username(),
 	})
 	if errs != nil {
@@ -193,7 +241,12 @@ func (o *offerResource) Read(ctx context.Context, req resource.ReadRequest, resp
 	state.ModelName = types.StringValue(response.ModelName)
 	state.OfferName = types.StringValue(response.Name)
 	state.ApplicationName = types.StringValue(response.ApplicationName)
-	state.EndpointName = types.StringValue(response.Endpoint)
+	endpointSet, diags := types.SetValueFrom(ctx, types.StringType, response.Endpoints)
+	if diags.HasError() {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to convert endpoints to set, got error: %s", err))
+		return
+	}
+	state.Endpoints = endpointSet
 	state.URL = types.StringValue(response.OfferURL)
 	state.ID = types.StringValue(response.OfferURL)
 
