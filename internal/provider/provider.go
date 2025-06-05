@@ -15,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/ephemeral"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
@@ -90,10 +91,10 @@ func getEnvVar(field string) types.String {
 }
 
 // Ensure jujuProvider satisfies various provider interfaces.
-var _ provider.Provider = &jujuProvider{}
+var _ provider.ProviderWithEphemeralResources = &jujuProvider{}
 
 // NewJujuProvider returns a framework style terraform provider.
-func NewJujuProvider(version string) provider.Provider {
+func NewJujuProvider(version string) provider.ProviderWithEphemeralResources {
 	return &jujuProvider{version: version}
 }
 
@@ -382,6 +383,12 @@ func (p *jujuProvider) Resources(_ context.Context) []func() resource.Resource {
 		func() resource.Resource { return NewJAASAccessServiceAccountResource() },
 		func() resource.Resource { return NewJAASGroupResource() },
 		func() resource.Resource { return NewJAASRoleResource() },
+	}
+}
+
+func (p *jujuProvider) EphemeralResources(_ context.Context) []func() ephemeral.EphemeralResource {
+	return []func() ephemeral.EphemeralResource{
+		func() ephemeral.EphemeralResource { return NewEphemeralResource() },
 	}
 }
 
