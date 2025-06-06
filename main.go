@@ -24,6 +24,9 @@ import (
 // can be customized.
 //go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs
 
+// Generate the docs for the ReadTheDocs website, this will generate the docs in the `docs-rtd/references`
+//go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs generate --rendered-website-dir docs-rtd/references
+
 var (
 	// these will be set by the goreleaser configuration
 	// to appropriate values for the compiled binary
