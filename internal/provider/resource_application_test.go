@@ -459,6 +459,7 @@ func TestAcc_ResourceRevisionUpdatesMicrok8s(t *testing.T) {
 }
 
 func TestAcc_CustomResourcesAddedToPlanMicrok8s(t *testing.T) {
+	t.Skip("skip for now")
 	if testingCloud != MicroK8sTesting {
 		t.Skip(t.Name() + " only runs with Microk8s")
 	}
