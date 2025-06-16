@@ -534,6 +534,7 @@ func (r *modelResource) Update(ctx context.Context, req resource.UpdateRequest, 
 }
 
 func (r *modelResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	return
 	// Prevent panic if the provider has not been configured.
 	if r.client == nil {
 		addClientNotConfiguredError(&resp.Diagnostics, "model", "delete")

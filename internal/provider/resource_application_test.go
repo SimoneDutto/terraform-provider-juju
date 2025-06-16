@@ -481,17 +481,27 @@ func TestAcc_CustomResourcesAddedToPlanMicrok8s(t *testing.T) {
 				),
 			},
 			{
-				// Add a custom resource
-				Config: testAccResourceApplicationWithCustomResources(modelName, "latest/stable", "coredns-image", "ghcr.io/canonical/test:6a873fb35b0170dfe49ed27ba8ee6feb8e475131"),
+				Config: testAccResourceApplicationWithoutCustomResources(modelName, "latest/stable"),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("juju_application.this", "resources.coredns-image", "ghcr.io/canonical/test:6a873fb35b0170dfe49ed27ba8ee6feb8e475131"),
+					resource.TestCheckNoResourceAttr("juju_application.this", "resources"),
+				),
+				// Add a step to wait for 10 seconds
+				PreConfig: func() {
+					time.Sleep(30 * time.Second)
+				},
+			},
+			{
+				// Add a custom resource
+				Config: testAccResourceApplicationWithCustomResources(modelName, "latest/stable", "coredns-image", "rocks.canonical.com/cdk/busybox:1.32"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("juju_application.this", "resources.coredns-image", "rocks.canonical.com/cdk/busybox:1.32"),
 				),
 			},
 			{
 				// Add another custom resource
-				Config: testAccResourceApplicationWithCustomResources(modelName, "latest/stable", "coredns-image", "ghcr.io/canonical/test:ab0b183f22db2959e0350f54d92f9ed3583c4167"),
+				Config: testAccResourceApplicationWithCustomResources(modelName, "latest/stable", "coredns-image", "rocks.canonical.com/cdk/busybox:1.36"),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("juju_application.this", "resources.coredns-image", "ghcr.io/canonical/test:ab0b183f22db2959e0350f54d92f9ed3583c4167"),
+					resource.TestCheckResourceAttr("juju_application.this", "resources.coredns-image", "rocks.canonical.com/cdk/busybox:1.36"),
 				),
 			},
 			{
@@ -529,16 +539,16 @@ func TestAcc_CustomResourceUpdatesMicrok8s(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				// Deploy charm with a custom resource
-				Config: testAccResourceApplicationWithCustomResources(modelName, "latest/edge", "coredns-image", "ghcr.io/canonical/test:ab0b183f22db2959e0350f54d92f9ed3583c4167"),
+				Config: testAccResourceApplicationWithCustomResources(modelName, "latest/edge", "coredns-image", "rocks.canonical.com/cdk/busybox:1.36"),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("juju_application.this", "resources.coredns-image", "ghcr.io/canonical/test:ab0b183f22db2959e0350f54d92f9ed3583c4167"),
+					resource.TestCheckResourceAttr("juju_application.this", "resources.coredns-image", "rocks.canonical.com/cdk/busybox:1.36"),
 				),
 			},
 			{
 				// Keep charm channel and update resource to another custom image
-				Config: testAccResourceApplicationWithCustomResources(modelName, "latest/edge", "coredns-image", "ghcr.io/canonical/test:6a873fb35b0170dfe49ed27ba8ee6feb8e475131"),
+				Config: testAccResourceApplicationWithCustomResources(modelName, "latest/edge", "coredns-image", "rocks.canonical.com/cdk/busybox:1.32"),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("juju_application.this", "resources.coredns-image", "ghcr.io/canonical/test:6a873fb35b0170dfe49ed27ba8ee6feb8e475131"),
+					resource.TestCheckResourceAttr("juju_application.this", "resources.coredns-image", "rocks.canonical.com/cdk/busybox:1.32"),
 				),
 			},
 			{
@@ -583,9 +593,9 @@ func TestAcc_CustomResourcesRemovedFromPlanMicrok8s(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				// Deploy charm with a custom resource
-				Config: testAccResourceApplicationWithCustomResources(modelName, "latest/edge", "coredns-image", "ghcr.io/canonical/test:ab0b183f22db2959e0350f54d92f9ed3583c4167"),
+				Config: testAccResourceApplicationWithCustomResources(modelName, "latest/edge", "coredns-image", "rocks.canonical.com/cdk/busybox:1.32"),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("juju_application.this", "resources.coredns-image", "ghcr.io/canonical/test:ab0b183f22db2959e0350f54d92f9ed3583c4167"),
+					resource.TestCheckResourceAttr("juju_application.this", "resources.coredns-image", "rocks.canonical.com/cdk/busybox:1.32"),
 				),
 			},
 			{
@@ -1876,8 +1886,8 @@ func TestAcc_ResourceApplication_CustomOCIForResource(t *testing.T) {
 	modelName := acctest.RandomWithPrefix("tf-test-custom-oci-resource")
 	charm := "coredns"
 	resourceName := "coredns-image"
-	ociImage := "ghcr.io/canonical/test:6a873fb35b0170dfe49ed27ba8ee6feb8e475131"
-	ociImage2 := "ghcr.io/canonical/test:ab0b183f22db2959e0350f54d92f9ed3583c4167"
+	ociImage := "rocks.canonical.com/cdk/busybox:1.32"
+	ociImage2 := "rocks.canonical.com/cdk/busybox:1.36"
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: frameworkProviderFactories,

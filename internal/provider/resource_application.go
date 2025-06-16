@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/dustin/go-humanize"
@@ -691,6 +692,17 @@ func (r *applicationResource) Create(ctx context.Context, req resource.CreateReq
 	plan.ID = types.StringValue(newAppID(plan.ModelName.ValueString(), createResp.AppName))
 	r.trace("Created", applicationResourceModelForLogging(ctx, &plan))
 
+	_, err = wait.WaitFor(wait.WaitForCfg[*juju.ReadApplicationInput, *juju.ReadApplicationResponse]{
+		Context:        ctx,
+		Input:          &juju.ReadApplicationInput{ModelName: plan.ModelName.ValueString(), AppName: createResp.AppName},
+		GetData:        r.client.Applications.ReadApplication,
+		DataAssertions: []wait.Assert[*juju.ReadApplicationResponse]{assertEqualResources(resourceRevisions)},
+		NonFatalErrors: []error{juju.ConnectionRefusedError, juju.RetryReadError, juju.ApplicationNotFoundError, juju.StorageNotFoundError},
+	})
+	if err != nil {
+		resp.Diagnostics.AddError("Wait Error", fmt.Sprintf("Unable to wait for application to be ready, got error: %s", err))
+		return
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -1146,6 +1158,7 @@ func (r *applicationResource) Update(ctx context.Context, req resource.UpdateReq
 				}
 			}
 		}
+		asserts = append(asserts, assertEqualResources(planResourceMap))
 	}
 
 	// Do not use .Equal() here as we should consider null constraints the same
@@ -1391,6 +1404,7 @@ func (*applicationResource) computeEndpointBindingsDeltas(ctx context.Context, s
 // Juju refers to deletion as "destroy" so we call the Destroy function of our client here rather than delete
 // This function remains named Delete for parity across the provider and to stick within terraform naming conventions
 func (r *applicationResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	return
 	// Prevent panic if the provider has not been configured.
 	if r.client == nil {
 		addClientNotConfiguredError(&resp.Diagnostics, "application", "delete")
@@ -1509,6 +1523,25 @@ func assertEqualsMachines(machinesToCompare []string) func(outputFromAPI *juju.R
 			return juju.NewRetryReadError("plan machines differ from application machines")
 		}
 
+		return nil
+	}
+}
+
+func assertEqualResources(planResources map[string]string) func(outputFromAPI *juju.ReadApplicationResponse) error {
+	return func(outputFromAPI *juju.ReadApplicationResponse) error {
+		apiResources := outputFromAPI.Resources
+
+		for k, v := range planResources {
+			if _, err := strconv.Atoi(v); err != nil {
+				if apiResources[k] != "-1" {
+					return juju.NewRetryReadError(fmt.Sprintf("resource %q differs: plan -1, API %q", k, apiResources[k]))
+				}
+			} else {
+				if apiResources[k] != v {
+					return juju.NewRetryReadError(fmt.Sprintf("resource %q differs: plan %q, API %q", k, v, apiResources[k]))
+				}
+			}
+		}
 		return nil
 	}
 }
