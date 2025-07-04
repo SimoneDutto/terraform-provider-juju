@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -21,6 +22,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
+	"github.com/juju/clock"
+	"github.com/juju/juju/core/status"
 	"github.com/juju/names/v5"
 	"github.com/juju/terraform-provider-juju/internal/juju"
 	"github.com/juju/terraform-provider-juju/internal/wait"
@@ -343,28 +346,35 @@ func (r *machineResource) Create(ctx context.Context, req resource.CreateRequest
 	id := newMachineID(plan.ModelName.ValueString(), response.ID, machineName)
 	plan.ID = types.StringValue(id)
 	plan.MachineID = types.StringValue(response.ID)
-	plan.Base = types.StringValue(response.Base)
-	plan.Series = types.StringValue(response.Series)
 	plan.Name = types.StringValue(machineName)
 	plan.Hostname = types.StringValue("")
-
+	asserts := []wait.Assert[juju.ReadMachineResponse]{assertMachineRunning}
 	if plan.WaitForHostname.ValueBool() {
-		response, err := wait.WaitFor(wait.WaitForCfg[juju.ReadMachineInput, juju.ReadMachineResponse]{
-			Context: ctx,
-			GetData: r.client.Machines.ReadMachine,
-			Input: juju.ReadMachineInput{
-				ModelName: plan.ModelName.ValueString(),
-				ID:        response.ID,
-			},
-			DataAssertions: []wait.Assert[juju.ReadMachineResponse]{assertHostnamePopulated},
-			NonFatalErrors: []error{juju.RetryReadError, juju.ConnectionRefusedError},
-		})
-		if err != nil {
-			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to wait for hostname to be set on machine %q, got error: %s", response.ID, err))
-			return
-		}
-		plan.Hostname = types.StringValue(response.Hostname)
+		asserts = append(asserts, assertHostnamePopulated)
 	}
+	readResponse, err := wait.WaitFor(wait.WaitForCfg[juju.ReadMachineInput, juju.ReadMachineResponse]{
+		Context: ctx,
+		GetData: r.client.Machines.ReadMachine,
+		Input: juju.ReadMachineInput{
+			ModelName: plan.ModelName.ValueString(),
+			ID:        response.ID,
+		},
+		DataAssertions: asserts,
+		NonFatalErrors: []error{juju.RetryReadError, juju.ConnectionRefusedError},
+		RetryConf: &wait.RetryConf{
+			MaxDuration: 30 * time.Minute,
+			Delay:       juju.ReadModelDefaultInterval,
+			Clock:       clock.WallClock,
+		},
+	})
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to wait for hostname to be set on machine %q, got error: %s", response.ID, err))
+		return
+	}
+	plan.Base = types.StringValue(readResponse.Base)
+	plan.Series = types.StringValue(readResponse.Series)
+	plan.Hostname = types.StringValue(readResponse.Hostname)
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -614,6 +624,17 @@ func updateAnnotations(ctx context.Context, client annotationSetter, stateAnnota
 func assertHostnamePopulated(respFromAPI juju.ReadMachineResponse) error {
 	if respFromAPI.Hostname == "" {
 		return juju.NewRetryReadError("waiting for hostname to be set on machine")
+	}
+	return nil
+}
+
+// assertMachineRunning waits for machine to go into "running" state. This is important when using the placement directive
+// in juju_application resource - to deploy an application or validate against the operating system
+// specified for the application Juju must know the operating system to use. For actual machines that
+// information is not available until it reaches the "running" state.
+func assertMachineRunning(respFromAPI juju.ReadMachineResponse) error {
+	if respFromAPI.Status == status.Running.String() {
+		return juju.NewRetryReadError("waiting for machine to be in running state")
 	}
 	return nil
 }
