@@ -242,6 +242,27 @@ func (sc *sharedClient) GetConnection(modelIdentifier *string) (api.Connection, 
 	return conn, nil
 }
 
+func (sc *sharedClient) GetControllerConnection(cfg connector.SimpleConfig) (api.Connection, error) {
+	dialOptions := func(do *api.DialOpts) {
+		//this is set as a const above, in case we need to use it elsewhere to manage connection timings
+		do.Timeout = getConnectionTimeout()
+		//default is 2 seconds, as we are changing the overall timeout it makes sense to reduce this as well
+		do.RetryDelay = 1 * time.Second
+	}
+
+	connr, err := connector.NewSimple(cfg, dialOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	conn, err := connr.Connect()
+	if err != nil {
+		sc.Errorf(err, "connection not established")
+		return nil, err
+	}
+	return conn, nil
+}
+
 // ModelUUID returns the model uuid for the provided modelIdentifier.
 // The modelIdentifier can be a model name or model uuid. If the modelIdentifier
 // is a uuid, return that without verification. If a name is provided, first

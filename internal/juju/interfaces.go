@@ -15,6 +15,7 @@ import (
 	apiresources "github.com/juju/juju/api/client/resources"
 	apisecrets "github.com/juju/juju/api/client/secrets"
 	apicommoncharm "github.com/juju/juju/api/common/charm"
+	"github.com/juju/juju/api/connector"
 	jujucloud "github.com/juju/juju/cloud"
 	"github.com/juju/juju/core/constraints"
 	"github.com/juju/juju/core/model"
@@ -27,6 +28,7 @@ import (
 type SharedClient interface {
 	AddModel(modelName, modelUUID string, modelType model.ModelType)
 	GetConnection(modelName *string) (api.Connection, error)
+	GetControllerConnection(cfg connector.SimpleConfig) (api.Connection, error)
 	ModelType(modelName string) (model.ModelType, error)
 	ModelUUID(modelName string) (string, error)
 	ModelStatus(modelIdentifier string, conn api.Connection) (*params.FullStatus, error)

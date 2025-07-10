@@ -23,6 +23,7 @@ import (
 	resources "github.com/juju/juju/api/client/resources"
 	secrets "github.com/juju/juju/api/client/secrets"
 	charm0 "github.com/juju/juju/api/common/charm"
+	connector "github.com/juju/juju/api/connector"
 	charmhub "github.com/juju/juju/charmhub"
 	transport "github.com/juju/juju/charmhub/transport"
 	cloud "github.com/juju/juju/cloud"
@@ -113,6 +114,21 @@ func (m *MockSharedClient) GetConnection(modelName *string) (api.Connection, err
 func (mr *MockSharedClientMockRecorder) GetConnection(modelName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetConnection", reflect.TypeOf((*MockSharedClient)(nil).GetConnection), modelName)
+}
+
+// GetControllerConnection mocks base method.
+func (m *MockSharedClient) GetControllerConnection(cfg connector.SimpleConfig) (api.Connection, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetControllerConnection", cfg)
+	ret0, _ := ret[0].(api.Connection)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetControllerConnection indicates an expected call of GetControllerConnection.
+func (mr *MockSharedClientMockRecorder) GetControllerConnection(cfg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetControllerConnection", reflect.TypeOf((*MockSharedClient)(nil).GetControllerConnection), cfg)
 }
 
 // JujuLogger mocks base method.

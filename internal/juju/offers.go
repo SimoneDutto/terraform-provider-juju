@@ -13,6 +13,7 @@ import (
 	apiapplication "github.com/juju/juju/api/client/application"
 	"github.com/juju/juju/api/client/applicationoffers"
 	apiclient "github.com/juju/juju/api/client/client"
+	"github.com/juju/juju/api/connector"
 	"github.com/juju/juju/core/crossmodel"
 	"github.com/juju/juju/rpc/params"
 	"github.com/juju/names/v5"
@@ -272,13 +273,20 @@ func (c offersClient) ConsumeRemoteOffer(input *ConsumeRemoteOfferInput) (*Consu
 		return nil, err
 	}
 	defer func() { _ = modelConn.Close() }()
-	conn, err := c.GetConnection(nil)
+	conn, err := c.GetControllerConnection(
+		connector.SimpleConfig{
+			ControllerAddresses: []string{"10.152.183.28:17070"},
+			CACert:              "-----BEGIN CERTIFICATE-----\nMIIEEzCCAnugAwIBAgIVAKNfOeuYcVXRibx5jW2hZMvnsYogMA0GCSqGSIb3DQEB\nCwUAMCExDTALBgNVBAoTBEp1anUxEDAOBgNVBAMTB2p1anUtY2EwHhcNMjUwNzA5\nMTQ1NTM5WhcNMzUwNzA5MTUwMDM5WjAhMQ0wCwYDVQQKEwRKdWp1MRAwDgYDVQQD\nEwdqdWp1LWNhMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAvTvquAvC\n+L4C+Xx4F7gVB0htmZX3J6TowH4nHmjtuXY8aOMD3rz/FKcDrnc+l4WRGJ72a5Vi\naPV7sfdga3Tf9ffvMILQ0er0HUhoeIKX3VzRH0LRV+CxlKc6ePHXX69D1mWo7kEc\nmbz6s54mjsLlk+YwtBZQCp4HWHi3Wq0KcSckfi4vVcueg/u+IoY5jvym1aMH0Wi7\nnuYyrTa0KbuCxZ4UGx7ntX2dIrG7u8XNlLB5+jIf9edwbl+sSDwpkhAPBgG1Pp7P\nsGnTrGWeOY7KQtVylmspej1nEU5hAfgtOE9dY9izXej+mSFJ9/BfT1E5RPDdREcq\nifBtxKJwYhg9MS7M64WzLuzDSqgQ74xq52rDBRxirGz6J4VwHkwPtfO2NsKmz+hm\nLitq6JcAdF0rZtGeZ2qsTb8E7ydF99TQk6fJoH06kLiIn+WBuplmSlGihOP6sWQz\ngizz4gEVhcmOUkaNaBLWfefx2FgNX4njHp9C7HBZrMWVH0dtqj8TUsYHAgMBAAGj\nQjBAMA4GA1UdDwEB/wQEAwICpDAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQWBBQs\nKGhxdssxGCB7LgLPHRSITUJZijANBgkqhkiG9w0BAQsFAAOCAYEAdl6vo8rxzP18\n07NIELI8Me8nDGEoUSuJHZ133lTcAqIAozHMxLIyiWwWY/iPdekaV8tOsKaMGCyh\nPRceCBxVDiM+oFa542m7g3iJMhMZPMJWvT1kzIxFd0Um7esiKi26gEFJpWb3PEgv\nXpagaAmffmIJ00vBJaHVORUGsm6ylHSmLDo/5Q+YTGLpe5VE7ttfltkOlQIRma+6\nc9aiOGt4IbuDBnM68tAmp4nDIhJK4zcTvIcfxuWEYTZn/Ji1ia7NTPOpWG4USeAq\nYC7kjWvErpxerlsPwymM7TMx8LDACCOdBSwndNqxAlzIHlG1gqcues+7uI0ON3lb\nMkR6TjFYBK4mkbhBnXVBOOkltNGiQ445xqzltiHFKhEZh0xCrOcpV5MLhw0S/1ca\n5S49xOD7GueNBaHnxOZYrWkG6QGYC2YloGyenYjiwcfCtGiDzEyoNmwIes4EoAV7\nFtaVDVbsGIcP4FEAE1Ox/oG2b7lbI5GH1i2okxAh/sMrLb2+GbNC\n-----END CERTIFICATE-----",
+			Username:            "admin",
+			Password:            "42bdec46936cac92526ab4df638638f8",
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
 
-	offersClient := applicationoffers.NewClient(conn)
+	sourceOffersClient := applicationoffers.NewClient(conn)
 	client := apiapplication.NewClient(modelConn)
 
 	url, err := crossmodel.ParseOfferURL(input.OfferURL)
@@ -290,17 +298,10 @@ func (c offersClient) ConsumeRemoteOffer(input *ConsumeRemoteOfferInput) (*Consu
 		return nil, fmt.Errorf("saas offer %q shouldn't include endpoint", input.OfferURL)
 	}
 
-	consumeDetails, err := offersClient.GetConsumeDetails(url.AsLocal().String())
+	consumeDetails, err := sourceOffersClient.GetConsumeDetails(url.AsLocal().String())
 	if err != nil {
 		return nil, err
 	}
-
-	offerURL, err := crossmodel.ParseOfferURL(consumeDetails.Offer.OfferURL)
-	if err != nil {
-		return nil, err
-	}
-	offerURL.Source = url.Source
-	consumeDetails.Offer.OfferURL = offerURL.String()
 
 	consumeArgs := crossmodel.ConsumeApplicationArgs{
 		Offer:            *consumeDetails.Offer,
