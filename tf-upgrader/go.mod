@@ -1,4 +1,4 @@
-module github.com/SimoneDutto/tf-upgrader
+module github.com/SimoneDutto/terraform-provider-juju/tf-upgrader
 
 go 1.24
 
