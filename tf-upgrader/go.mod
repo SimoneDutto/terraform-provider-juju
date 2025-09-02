@@ -1,4 +1,4 @@
-module github.com/juju/SimoneDutto/tf-upgrader
+module github.com/SimoneDutto/tf-upgrader
 
 go 1.24
 
