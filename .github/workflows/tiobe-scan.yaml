@@ -1,3 +1,7 @@
+# This workflow performs a TIOBE static code analysis using TICS.
+# Coverage is calculated by running integration tests on LXD and unit tests.
+# Coverage could be increased by testing on additional clouds and JAAS,
+# but running all tests sequentially on one runner is slow and may cause CI flakiness.
 name: TIOBE scan
 
 on:
@@ -7,7 +11,7 @@ on:
 
 jobs:
   build:
-    runs-on: [self-hosted, linux, amd64, tiobe, jammy]
+    runs-on: ubuntu-latest
     steps:
     - name: Checkout the project
       uses: actions/checkout@v4
